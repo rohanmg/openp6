@@ -11,28 +11,58 @@
     <div class="logobig">open<b>P6</b></div>
     <p class="sub">Access requested</p>
     <p class="pendingmsg">
-      Your request has been sent to the administrator. You'll be able to sign in
-      and open your schedules as soon as it's approved.
+      Your request has been sent to the administrator. You'll be able to open your
+      schedules as soon as it's approved &mdash; <b>no need to sign in again</b>.
     </p>
     <p class="hint" id="who"></p>
     <button id="refresh" class="gbtn">Check again</button>
-    <form method="post" action="/api/logout" style="margin:0">
-      <button type="submit" class="plain">Sign out</button>
-    </form>
+    <p class="hint" id="status">Checking automatically every 15 seconds.</p>
+    <button id="signout" class="plain">Sign out</button>
     <div class="err" id="err"></div>
   </div>
+
   <script>
-    async function who(){
-      const r = await fetch('/api/me');
-      if (!r.ok) { location.href = '/login'; return; }
-      const u = await r.json();
-      document.getElementById('who').textContent = u.email || '';
-      if (u.status === 'approved' || u.admin) location.href = '/';
-      if (u.status === 'revoked') document.getElementById('err').textContent = 'Access was revoked.';
+    const err = document.getElementById('err');
+    const status = document.getElementById('status');
+    let busy = false;
+
+    const stamp = () => new Date().toLocaleTimeString();
+
+    async function check(manual){
+      if (busy) return;
+      busy = true;
+      if (manual) status.textContent = 'Checking\u2026';
+      try {
+        const r = await fetch('/api/me', {cache: 'no-store'});
+        if (!r.ok) { location.href = '/login'; return; }
+        const u = await r.json();
+        document.getElementById('who').textContent = u.email || '';
+        if (u.admin || u.status === 'approved') {      // approved: go straight in
+          status.textContent = 'Approved \u2014 opening openP6\u2026';
+          location.href = '/';
+          return;
+        }
+        if (u.status === 'revoked') {
+          err.textContent = 'Access was revoked by the administrator.';
+          status.textContent = '';
+          return;
+        }
+        status.textContent = 'Still waiting for approval \u2014 last checked ' + stamp() + '.';
+      } catch (e) {
+        status.textContent = 'Could not reach the server \u2014 retrying\u2026';
+      } finally {
+        busy = false;
+      }
     }
-    who();
-    document.getElementById('refresh').onclick = who;
-    setInterval(who, 15000);
+
+    document.getElementById('refresh').addEventListener('click', () => check(true));
+    document.getElementById('signout').addEventListener('click', async () => {
+      try { await fetch('/api/logout', {method: 'POST'}); } catch (e) {}
+      location.href = '/login';
+    });
+
+    check(false);
+    setInterval(() => check(false), 15000);
   </script>
 </body>
 </html>

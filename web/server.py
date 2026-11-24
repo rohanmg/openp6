@@ -70,11 +70,29 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # ------------------------------------------------------------------ sessions
 def user_of(request: Request) -> dict | None:
+    """Resolve the session, re-reading authorisation from the store.
+
+    The cookie is only proof of *identity*. Status must be read fresh each time,
+    otherwise an approval (or revocation) made in the store never takes effect
+    for a session that is already open - the user would sit on /pending forever.
+    """
     body = auth.unsign(request.cookies.get(COOKIE, ""))
     if not body or not body.get("sub"):
         return None
-    if body.get("email", "").lower() == auth.admin_email():
+    sub = str(body["sub"])
+
+    if sub == "password":                       # the shared admin fallback
         body["admin"] = True
+        body["status"] = "approved"
+        return body
+
+    rec = get_user(sub)
+    if rec is None:                             # deleted or unknown account
+        return None
+    body["email"] = rec.get("email", body.get("email", ""))
+    body["name"] = rec.get("name", body.get("name", ""))
+    body["status"] = rec.get("status", "pending")
+    body["admin"] = bool(body["email"]) and body["email"].lower() == auth.admin_email()
     return body
 
 
