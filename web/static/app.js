@@ -22,14 +22,17 @@ function toast(m, bad){ const t = el('div','toast' + (bad?' bad':''), esc(m));
   setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),300); },2600); }
 
 async function api(path, opts={}){
-  if (opts.body && typeof opts.body === 'object' && !(opts.body instanceof FormData)){
-    opts.headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
-    opts.body = JSON.stringify(opts.body);
+  const o = Object.assign({}, opts, {headers: Object.assign({}, opts.headers||{})});
+  if (o.body && typeof o.body === 'object' && !(o.body instanceof FormData)){
+    o.headers['Content-Type'] = 'application/json';
+    o.body = JSON.stringify(o.body);
   }
-  const r = await fetch(path, opts);
+  if (S.data && S.data.rev != null && (o.method || 'GET') !== 'GET')
+    o.headers['X-OpenP6-Rev'] = String(S.data.rev);
+  const r = await fetch(path, o);
   if (r.status === 401){ location.href = '/login'; throw new Error('auth'); }
   if (!r.ok){ let m = await r.text(); try { m = JSON.parse(m).detail || m; } catch(e){}
-    throw new Error(String(m).slice(0,180)); }
+    throw new Error(String(m).slice(0,200)); }
   return r.headers.get('content-type')?.includes('json') ? r.json() : r.text();
 }
 
@@ -50,7 +53,17 @@ async function selectProject(key, keepSel){
 }
 async function refresh(){ if (S.key) await selectProject(S.key, true); }
 async function mutate(fn, okMsg){ try { await fn(); await loadProjects(); await refresh();
-  if (okMsg) toast(okMsg); } catch(e){ toast(e.message, true); } }
+  if (okMsg) toast(okMsg); }
+  catch(e){ toast(e.message, true); await refresh().catch(()=>{}); } }
+
+async function doUndo(){ if (!S.key) return;
+  try { S.data = await api(`/api/projects/${encodeURIComponent(S.key)}/undo`, {method:'POST'});
+    await loadProjects(); render(); renderDetails(); toast('Undone'); }
+  catch(e){ toast(e.message, true); await refresh().catch(()=>{}); } }
+async function doRedo(){ if (!S.key) return;
+  try { S.data = await api(`/api/projects/${encodeURIComponent(S.key)}/redo`, {method:'POST'});
+    await loadProjects(); render(); renderDetails(); toast('Redone'); }
+  catch(e){ toast(e.message, true); await refresh().catch(()=>{}); } }
 
 function counts(){
   const a = S.data?.activities || [];
@@ -115,7 +128,7 @@ function render(){
   const vis = S.criticalOnly ? d.activities.filter(a=>a.critical) : d.activities;
   groupBy(vis).forEach(grp => { g.append(bandRow(grp, o)); grp.acts.forEach(a => g.append(actRow(a, o))); });
   if (!vis.length) g.append(el('div','empty','No activities yet — use “+ Activity”.'));
-  setStatus(`${c.activities} activities · ${c.critical} critical · ${c.relationships} relationships · ${d.calendar?.hpd||8}h/day`);
+  setStatus(`${c.activities} activities · ${c.critical} critical · ${c.relationships} relationships · ${d.calendar?.hpd||8}h/day · rev ${d.rev||1}`);
 }
 function hcell(c,t){ return el('div','hcell cell ' + c, t); }
 function ticks(o, tlw){
@@ -331,7 +344,13 @@ $('btnAddAct').onclick = () => { if (!S.key) return toast('Open a schedule first
     {method:'POST', body:{name:'New activity', dur_h:8}}), 'Activity added'); };
 $('btnSchedule').onclick = () => { if (S.key) mutate(()=>api(`/api/projects/${encodeURIComponent(S.key)}/schedule`,
   {method:'POST'}), 'Schedule complete'); };
-document.addEventListener('keydown', e => { if (e.key === 'F9'){ e.preventDefault(); $('btnSchedule').click(); } });
+document.addEventListener('keydown', e => {
+  if (e.key === 'F9'){ e.preventDefault(); $('btnSchedule').click(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'){
+    e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); }
+});
+$('btnUndo').onclick = doUndo;
+$('btnRedo').onclick = doRedo;
 $('btnCsv').onclick = () => { if (S.key) location.href = `/api/projects/${encodeURIComponent(S.key)}/export/csv`; };
 $('btnXer').onclick = () => { if (S.key) location.href = `/api/projects/${encodeURIComponent(S.key)}/export/xer`; };
 $('btnPrint').onclick = () => window.print();
