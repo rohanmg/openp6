@@ -63,19 +63,24 @@ def main() -> int:
         return 2
 
     code, owners = call("GET", "/owners", key=key)
-    if code != 200 or not owners:
+    if code != 200 or not isinstance(owners, list) or not owners:
         print(f"cannot read owners: {code} {owners}", file=sys.stderr)
         return 1
-    owner_id = owners[0]["owner"]["id"]
+    first = owners[0] if isinstance(owners[0], dict) else {}
+    owner_id = (first.get("owner") or {}).get("id")
+    if not owner_id:
+        print(f"no owner id in response: {owners}", file=sys.stderr)
+        return 1
     print(f"owner        : {owner_id}")
 
     code, existing = call("GET", f"/services?name={args.name}&limit=20", key=key)
     svc = None
-    if code == 200 and existing:
+    if code == 200 and isinstance(existing, list):
         for item in existing:
-            s = item.get("service", item)
-            if s.get("name") == args.name:
-                svc, _ = s, print(f"reusing service: {s['id']}")
+            s = item.get("service", item) if isinstance(item, dict) else {}
+            if isinstance(s, dict) and s.get("name") == args.name:
+                svc = s
+                print(f"reusing service: {s.get('id')}")
                 break
 
     if svc is None:
@@ -130,9 +135,10 @@ def main() -> int:
     for _ in range(60):
         time.sleep(20)
         code, deploys = call("GET", f"/services/{svc['id']}/deploys?limit=1", key=key)
-        if code == 200 and deploys:
-            d = deploys[0].get("deploy", deploys[0])
-            status = d.get("status")
+        if code == 200 and isinstance(deploys, list) and deploys:
+            item = deploys[0] if isinstance(deploys[0], dict) else {}
+            d = item.get("deploy", item)
+            status = d.get("status") if isinstance(d, dict) else None
             if status in ("live", "build_failed", "update_failed", "canceled"):
                 print(f"deploy status: {status}")
                 break
