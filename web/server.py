@@ -21,7 +21,7 @@ import shutil
 import sys
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, Request, HTTPException, Body
@@ -139,7 +139,12 @@ def doc_new_code(doc):
 def healthz():
     return {"ok": True, "app": "openP6", "store": STORE.backend,
             "projects": len(STORE.list_keys()),
-            "time": datetime.utcnow().isoformat() + "Z"}
+            "time": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(status_code=204)
 
 
 @app.post("/api/login")
