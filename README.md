@@ -48,10 +48,12 @@ Oracle Cloud) and the tunnel option.
 
 | Step | Detail |
 |---|---|
-| Parse | Lossless XER reader (Windows-1252, CRLF, all tables). Write-back supported by `Xer.write()`. |
+| Parse | Lossless XER reader; auto-detects **UTF-8 vs Windows-1252** so accented names don't turn to mojibake. Write-back via `Xer.write()`. |
 | Calendars | Reads P6 `clndr_data`: working week + holiday exceptions, hours/day. |
 | CPM | Forward pass (ES/EF) and backward pass (LS/LF) with `PR_FS/PR_SS/PR_FF/PR_SF` and hour lags; total & free float; critical path. |
 | Milestones | Start/finish milestones placed on the correct 08:00 / 17:00 instant. |
+| Scale | **Virtualised grid** — only on-screen rows get DOM nodes (40,000 activities → ~40 rows); gzip + response cache keep the payload ~1 MB. |
+| Robustness | Undo/redo history (40 revisions), optimistic-locking conflict detection across devices, input validation, atomic crash-safe writes, `/api/backup`. |
 | Output | HTML Gantt (self-contained), CSV, console report. |
 
 ## Verification

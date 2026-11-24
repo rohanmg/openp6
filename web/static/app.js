@@ -109,6 +109,9 @@ function renderNav(){
 }
 
 /* -------- grid -------- */
+const HEADH = 38, H_BAND = 21, H_ROW = 23, BUFFER = 400;
+const ROWH = {band: H_BAND, row: H_ROW};
+
 function render(){
   if (!S.data){ $('grid').innerHTML=''; $('crumbs').textContent='No project selected'; return; }
   const d = S.data, c = counts();
@@ -125,10 +128,57 @@ function render(){
   ticks(o, tlw).forEach(t => { const l = el('div','tlabel', t.label); l.style.left = t.x+'px'; htl.append(l); });
   head.append(htl); g.append(head);
 
-  const vis = S.criticalOnly ? d.activities.filter(a=>a.critical) : d.activities;
-  groupBy(vis).forEach(grp => { g.append(bandRow(grp, o)); grp.acts.forEach(a => g.append(actRow(a, o))); });
-  if (!vis.length) g.append(el('div','empty','No activities yet — use “+ Activity”.'));
-  setStatus(`${c.activities} activities · ${c.critical} critical · ${c.relationships} relationships · ${d.calendar?.hpd||8}h/day · rev ${d.rev||1}`);
+  // ---- flat item list (WBS band, then its activities) ----
+  let acts = d.activities;
+  if (S.criticalOnly) acts = acts.filter(a => a.critical);
+  if (S.q) acts = acts.filter(a => `${a.code} ${a.name}`.toLowerCase().includes(S.q));
+  const items = [];
+  groupBy(acts).forEach(grp => {
+    items.push({type:'band', grp});
+    grp.acts.forEach(a => items.push({type:'row', act:a}));
+  });
+  const offs = []; let y = 0;
+  for (const it of items){ offs.push(y); y += ROWH[it.type]; }
+  S.items = items; S.offs = offs; S.origin = o; S.range = null;
+
+  const body = el('div','gridbody');
+  body.style.height = Math.max(y, 1) + 'px';
+  g.append(body); S.body = body;
+  if (items.length) paint(true);
+  else body.append(el('div','empty', S.q ? 'No activity matches that search.'
+                                           : 'No activities yet — use “+ Activity”.'));
+  const shown = acts.length !== d.activities.length ? ` · showing ${acts.length}/${d.activities.length}` : '';
+  setStatus(`${c.activities} activities · ${c.critical} critical · ${c.relationships} relationships · ${d.calendar?.hpd||8}h/day · rev ${d.rev||1}${shown}`);
+}
+
+/* virtual scrolling: only the visible slice gets DOM nodes */
+function firstVisible(top){
+  let lo = 0, hi = S.items.length;
+  while (lo < hi){ const m = (lo + hi) >> 1;
+    if (S.offs[m] + ROWH[S.items[m].type] <= top) lo = m + 1; else hi = m; }
+  return lo;
+}
+function paint(force){
+  const gw = document.querySelector('.gridwrap');
+  if (!S.body || !S.items || !S.items.length) return;
+  const top = Math.max(0, gw.scrollTop - HEADH - BUFFER);
+  const bot = gw.scrollTop + gw.clientHeight + BUFFER;
+  const start = firstVisible(top);
+  let end = start;
+  while (end < S.items.length && S.offs[end] < bot) end++;
+  if (!force && S.range && S.range[0] === start && S.range[1] === end) return;
+  S.range = [start, end];
+  const frag = document.createDocumentFragment();
+  for (let i = start; i < end; i++) frag.append(vrow(i));
+  S.body.replaceChildren(frag);
+}
+function vrow(i){
+  const it = S.items[i];
+  const node = it.type === 'band' ? bandRow(it.grp, S.origin) : actRow(it.act, S.origin);
+  node.style.position = 'absolute'; node.style.left = '0'; node.style.right = '0';
+  node.style.top = S.offs[i] + 'px'; node.style.height = ROWH[it.type] + 'px';
+  node.style.overflow = 'hidden';
+  return node;
 }
 function hcell(c,t){ return el('div','hcell cell ' + c, t); }
 function ticks(o, tlw){
@@ -359,8 +409,9 @@ $('btnZoomIn').onclick = () => { S.ppd = Math.min(S.ppd*1.5, 60); render(); };
 $('btnZoomOut').onclick = () => { S.ppd = Math.max(S.ppd/1.5, 0.8); render(); };
 $('btnFit').onclick = () => { const gw=document.querySelector('.gridwrap');
   S.ppd = Math.max(1.2, (gw.clientWidth - COLS - 10)/Math.max(spanDays(),1)); render(); };
-$('search').oninput = e => { const q=e.target.value.toLowerCase();
-  document.querySelectorAll('.arow').forEach(r => r.style.display = (!q || r.textContent.toLowerCase().includes(q)) ? '' : 'none'); };
+$('search').oninput = e => { S.q = e.target.value.toLowerCase().trim();
+  clearTimeout(S.qT);
+  S.qT = setTimeout(() => { const gw = document.querySelector('.gridwrap'); if (gw) gw.scrollTop = 0; render(); }, 180); };
 $('btnDelete').onclick = async () => {
   if (!S.key || !confirm('Delete this schedule from the server?')) return;
   await api('/api/projects/'+encodeURIComponent(S.key), {method:'DELETE'});
@@ -375,5 +426,11 @@ function openNav(){ $('nav').classList.add('open'); $('scrim').classList.add('sh
 function closeNav(){ $('nav').classList.remove('open'); $('scrim').classList.remove('show'); }
 $('burger').onclick = openNav; $('scrim').onclick = closeNav;
 window.addEventListener('resize', () => { if (S.data) render(); });
+
+/* virtual-scroll: repaint the visible window, throttled to one frame */
+document.querySelector('.gridwrap').addEventListener('scroll', () => {
+  if (S.rafP) return;
+  S.rafP = requestAnimationFrame(() => { S.rafP = 0; paint(false); });
+}, {passive:true});
 
 loadProjects().catch(e => toast('Load failed: ' + e.message, true));

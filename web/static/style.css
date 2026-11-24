@@ -89,6 +89,7 @@ button{font:inherit;color:inherit}
   border-left:1px solid var(--line);padding-left:3px;white-space:nowrap}
 
 /* data rows */
+.gridbody{position:relative}
 .arow{display:flex;min-height:var(--rowh);border-bottom:1px solid var(--line2)}
 .arow:hover{background:#f7fafd}
 .arow.sel{background:var(--sel)}

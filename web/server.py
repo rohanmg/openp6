@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 import secrets
 import shutil
@@ -25,6 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, Request, HTTPException, Body
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -51,6 +53,7 @@ COOKIE = "openp6_session"
 FMT = "%Y-%m-%d %H:%M"
 
 app = FastAPI(title="openP6", docs_url=None, redoc_url=None)
+app.add_middleware(GZipMiddleware, minimum_size=1024)   # big schedules compress ~10x
 
 
 # ------------------------------------------------------------------ auth
@@ -108,6 +111,35 @@ def load_doc(key: str) -> dict:
     return doc
 
 
+# Serialised detail responses, keyed by (key, rev). Large schedules cost ~4s to
+# read + serialise + gzip, and a browser reload repeats that work unchanged.
+_DETAIL_CACHE: dict[str, tuple] = {}
+SLIM_DROP = ("es", "ef", "ls", "lf")           # engine internals the UI never shows
+
+
+def slim(doc: dict) -> dict:
+    out = dict(doc)
+    acts = []
+    for a in doc.get("activities", []):
+        b = {k: v for k, v in a.items() if k not in SLIM_DROP}
+        for f in ("dur_d", "total_float_h"):
+            if isinstance(b.get(f), float):
+                b[f] = round(b[f], 2)
+        acts.append(b)
+    out["activities"] = acts
+    return out
+
+
+def cached_detail(key: str, doc: dict) -> Response:
+    rev = doc.get("rev", 1)
+    hit = _DETAIL_CACHE.get(key)
+    if hit and hit[0] == rev:
+        return Response(hit[1], media_type="application/json")
+    text = json.dumps(slim(doc), separators=(",", ":"))
+    _DETAIL_CACHE[key] = (rev, text)
+    return Response(text, media_type="application/json")
+
+
 HISTORY_LIMIT = 40
 VALID_TYPES = {"TT_Task", "TT_Mile", "TT_FinMile", "TT_Rsrc", "TT_LOE", "TT_WBS"}
 VALID_STATUS = {"TK_NotStart", "TK_Active", "TK_Complete"}
@@ -156,6 +188,7 @@ def save_doc(key: str, doc: dict) -> dict:
         states, times = states[-HISTORY_LIMIT:], times[-HISTORY_LIMIT:]
     _put_hist(key, {"states": states, "times": times, "pos": len(states) - 1})
     STORE.put(key, doc)
+    _DETAIL_CACHE.pop(key, None)               # response cache is now stale
     return doc
 
 
@@ -312,9 +345,7 @@ async def upload(request: Request, file: UploadFile = File(...)):
 @app.get("/api/projects/{key}")
 def project_detail(key: str, request: Request):
     require(request)
-    doc = load_doc(key)
-    doc.pop("_dangling", None)
-    return doc
+    return cached_detail(key, load_doc(key))
 
 
 @app.patch("/api/projects/{key}")
@@ -538,6 +569,7 @@ def add_wbs(key: str, request: Request, payload: dict = Body(...)):
 def delete_project(key: str, request: Request):
     require(request)
     STORE.delete(key)
+    _DETAIL_CACHE.pop(key, None)
     return {"ok": True}
 
 

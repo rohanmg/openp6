@@ -10,6 +10,8 @@ Files are Windows-1252 encoded with CRLF newlines.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 ENCODING = "cp1252"
 
 
@@ -20,6 +22,7 @@ class Xer:
         self.header = header or []          # ERMHDR line, split on tabs
         self.fields = fields or {}          # table -> [field names]
         self.rows = rows or {}              # table -> [ {field: value} ]
+        self.encoding = ENCODING            # set by load(); used by write()
 
     # ---- parsing -------------------------------------------------------
     @classmethod
@@ -52,8 +55,23 @@ class Xer:
 
     @classmethod
     def load(cls, path: str) -> "Xer":
-        with open(path, "r", encoding=ENCODING, errors="replace") as fh:
-            return cls.parse(fh.read())
+        """Read an XER, auto-detecting UTF-8 vs Windows-1252.
+
+        P6's documented encoding is cp1252, but real exports are often UTF-8.
+        Decoding a UTF-8 file as cp1252 silently mangles accented text, so try
+        UTF-8 first and fall back (cp1252 bytes are usually invalid UTF-8).
+        """
+        raw = Path(path).read_bytes()
+        for enc in ("utf-8-sig", "utf-8"):
+            try:
+                xer = cls.parse(raw.decode(enc))
+                xer.encoding = enc
+                return xer
+            except UnicodeDecodeError:
+                continue
+        xer = cls.parse(raw.decode(ENCODING, errors="replace"))
+        xer.encoding = ENCODING
+        return xer
 
     # ---- access --------------------------------------------------------
     def table(self, name: str):
@@ -76,5 +94,11 @@ class Xer:
             for rec in self.rows.get(name, []):
                 out.append("%R\t" + "\t".join(rec.get(f, "") for f in flds))
         out.append("%E")
-        with open(path, "w", encoding=ENCODING, errors="replace", newline="") as fh:
+        enc = getattr(self, "encoding", ENCODING)
+        try:
+            data = "\r\n".join(out) + "\r\n"
+            data.encode(enc)
+        except (UnicodeEncodeError, LookupError):
+            enc = ENCODING
+        with open(path, "w", encoding=enc, errors="replace", newline="") as fh:
             fh.write("\r\n".join(out) + "\r\n")
