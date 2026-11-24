@@ -31,6 +31,7 @@ async function api(path, opts={}){
     o.headers['X-OpenP6-Rev'] = String(S.data.rev);
   const r = await fetch(path, o);
   if (r.status === 401){ location.href = '/login'; throw new Error('auth'); }
+  if (r.status === 403){ location.href = '/pending'; throw new Error('pending approval'); }
   if (!r.ok){ let m = await r.text(); try { m = JSON.parse(m).detail || m; } catch(e){}
     throw new Error(String(m).slice(0,200)); }
   return r.headers.get('content-type')?.includes('json') ? r.json() : r.text();
@@ -434,3 +435,43 @@ document.querySelector('.gridwrap').addEventListener('scroll', () => {
 }, {passive:true});
 
 loadProjects().catch(e => toast('Load failed: ' + e.message, true));
+
+/* -------- signed-in user + admin users panel -------- */
+(async () => {
+  let me = null;
+  try { const r = await fetch('/api/me'); if (r.ok) me = await r.json(); } catch(e){}
+  if (!me){ location.href = '/login'; return; }
+  $('who').innerHTML = (me.picture ? `<img class="avatar" src="${esc(me.picture)}" alt="">` : '')
+    + `<b>${esc(me.name || me.email || 'signed in')}</b>`;
+  $('who').title = me.email || '';
+  if (me.admin) $('btnUsers').hidden = false;
+})();
+$('btnLogout').onclick = async () => {
+  await fetch('/api/logout', {method:'POST'});
+  location.href = '/login';
+};
+async function showUsers(){
+  const list = await api('/api/admin/users');
+  const rows = list.map(u => `<tr>
+      <td>${esc(u.email || '')}</td>
+      <td>${esc(u.name || '')}</td>
+      <td><span class="pill ${esc(u.status)}">${esc(u.status)}</span></td>
+      <td>${esc((u.approved_at || '').slice(0,10))}</td>
+      <td>${u.admin ? '' : (u.status === 'approved'
+          ? `<button class="tb small" data-act="revoke" data-sub="${esc(u.sub)}">Revoke</button>`
+          : `<button class="tb small" data-act="approve" data-sub="${esc(u.sub)}">Approve</button>`)}</td>
+    </tr>`).join('');
+  $('dbody').innerHTML = `<h3 class="uhead">Users (${list.length})</h3>
+    <p class="uhint">People who sign in with Google land here as <b>pending</b> until you approve them.</p>
+    <table class="utable"><thead><tr><th>Email</th><th>Name</th><th>Status</th>
+      <th>Approved</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  $('dbody').querySelectorAll('button[data-act]').forEach(b => b.onclick = async () => {
+    try {
+      await api(`/api/admin/users/${encodeURIComponent(b.dataset.sub)}/${b.dataset.act}`,
+                {method:'POST'});
+      toast('User ' + b.dataset.act + 'd');
+      showUsers();
+    } catch(e){ toast(e.message, true); }
+  });
+}
+$('btnUsers').onclick = () => showUsers().catch(e => toast(e.message, true));

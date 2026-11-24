@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>openP6 — awaiting approval</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="loginpage">
+  <div class="logincard">
+    <div class="logobig">open<b>P6</b></div>
+    <p class="sub">Access requested</p>
+    <p class="pendingmsg">
+      Your request has been sent to the administrator. You'll be able to sign in
+      and open your schedules as soon as it's approved.
+    </p>
+    <p class="hint" id="who"></p>
+    <button id="refresh" class="gbtn">Check again</button>
+    <form method="post" action="/api/logout" style="margin:0">
+      <button type="submit" class="plain">Sign out</button>
+    </form>
+    <div class="err" id="err"></div>
+  </div>
+  <script>
+    async function who(){
+      const r = await fetch('/api/me');
+      if (!r.ok) { location.href = '/login'; return; }
+      const u = await r.json();
+      document.getElementById('who').textContent = u.email || '';
+      if (u.status === 'approved' || u.admin) location.href = '/';
+      if (u.status === 'revoked') document.getElementById('err').textContent = 'Access was revoked.';
+    }
+    who();
+    document.getElementById('refresh').onclick = who;
+    setInterval(who, 15000);
+  </script>
+</body>
+</html>

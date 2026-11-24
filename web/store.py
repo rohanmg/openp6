@@ -18,11 +18,27 @@ class LocalStore:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _p(self, key):
-        return self.root / (key.replace("/", "_") + ".json")
+        """Keys may be namespaced as '<owner>/<id>' -> a per-owner subdirectory."""
+        parts = [p for p in key.split("/") if p]
+        if len(parts) <= 1:
+            return self.root / ((parts[0] if parts else "doc") + ".json")
+        d = self.root / parts[0]
+        d.mkdir(parents=True, exist_ok=True)
+        return d / ("_".join(parts[1:]) + ".json")
 
-    def list_keys(self):
-        return sorted(p.stem for p in self.root.glob("*.json")
-                      if not p.stem.endswith("__hist"))
+    def list_keys(self, prefix=""):
+        """All document keys, optionally restricted to one namespace."""
+        out = []
+        if prefix:
+            d = self.root / prefix
+            if d.is_dir():
+                out = [f"{prefix}/{p.stem}" for p in d.glob("*.json")]
+        else:
+            out = [p.stem for p in self.root.glob("*.json")]
+            for d in sorted(self.root.iterdir()):
+                if d.is_dir() and not d.name.startswith("."):
+                    out += [f"{d.name}/{p.stem}" for p in d.glob("*.json")]
+        return sorted(k for k in out if not k.endswith("__hist"))
 
     def get(self, key):
         p = self._p(key)
@@ -42,6 +58,10 @@ class LocalStore:
         self._p(key).unlink(missing_ok=True)
         self._p(key + "__hist").unlink(missing_ok=True)
 
+    def size(self, key):
+        p = self._p(key)
+        return p.stat().st_size if p.exists() else 0
+
 
 class PGStore:
     backend = "postgres"
@@ -58,10 +78,12 @@ class PGStore:
     def _conn(self):
         return self.psycopg.connect(self.dsn, autocommit=True)
 
-    def list_keys(self):
+    def list_keys(self, prefix=""):
+        like = (prefix + "/%") if prefix else "%"
         with self._conn() as c:
             cur = c.execute("select key from openp6_docs "
-                            "where key not like '%%__hist' order by key")
+                            "where key like %s and key not like '%%__hist' order by key",
+                            (like,))
             return [r[0] for r in cur]
 
     def get(self, key):
@@ -80,6 +102,13 @@ class PGStore:
         with self._conn() as c:
             c.execute("delete from openp6_docs where key=%s or key=%s",
                       (key, key + "__hist"))
+
+    def size(self, key):
+        with self._conn() as c:
+            cur = c.execute("select coalesce(length(doc::text),0) "
+                            "from openp6_docs where key=%s", (key,))
+            row = cur.fetchone()
+            return int(row[0]) if row else 0
 
 
 def make_store(root):
