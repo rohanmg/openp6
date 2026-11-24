@@ -20,17 +20,29 @@ python -m openp6 csv      schedule.xer --out activities.csv
 A P6-Professional-style web workspace: menu bar, toolbar, EPS/projects
 navigator, WBS-grouped activity table, a synchronised Gantt with critical-path
 highlighting and total-float bars, and a Details pane (General / Status /
-Resources / Relationships / Codes / Notes).
+Resources / Relationships / Codes / Project).
+
+**It edits, not just views.** Change an activity's ID, name, duration, %
+complete, type, WBS and constraint; add or delete activities; add/remove
+predecessors (FS/SS/FF/SF + lag, circular links rejected); edit the project and
+calendar; then recompute with **Schedule** (F9) and **Export .xer** to take the
+schedule back into Primavera P6.
+
+See **[DEPLOY.md](DEPLOY.md)** for free always-on hosting (Render, Northflank,
+Oracle Cloud) and the tunnel option.
 
 ```bash
 ./start.sh                       # binds 0.0.0.0:8080
-# or:  OPENP6_PASSWORD=secret .venv/bin/python web/server.py
+# or:  OPENP6_PASSWORD=secret DATABASE_URL=... .venv/bin/python web/server.py
 ```
 
 * Local:  http://localhost:8080
 * LAN:    http://<this-machine-ip>:8080   (phone on the same Wi-Fi)
 * Login password lives in `./.password` (or `$OPENP6_PASSWORD`).
-* `OPENP6_LOCAL_TRUST=1` skips the password for localhost only.
+* `OPENP6_LOCAL_TRUST=1` skips the password for localhost only (never enable
+  this when a tunnel or proxy sits in front — the proxy looks like localhost).
+* `DATABASE_URL` switches storage from local JSON files to Postgres, so the app
+  survives redeploys on hosts with an ephemeral filesystem.
 
 ## What it does
 
