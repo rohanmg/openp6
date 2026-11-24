@@ -115,6 +115,23 @@ the URL is random and dies with the process. Good for demos, not production.
 
 ---
 
+## Backups
+
+The database is the only copy of your schedules, so keep a copy off it:
+
+```bash
+# dump every row (projects, undo history, user registry) to backups/*.json
+DATABASE_URL='postgresql://…' .venv/bin/python scripts/backup_pg.py backup
+
+# put a backup back (idempotent upsert — safe to re-run)
+.venv/bin/python scripts/backup_pg.py restore backups/openp6-backup-<stamp>.json
+```
+
+`backups/` is gitignored: a dump holds every user's data and must not be pushed
+to a public repository.
+
+---
+
 ## Push to GitHub
 
 ```bash

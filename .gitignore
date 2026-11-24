@@ -2,6 +2,7 @@ data/
 out/
 .venv/
 .password
+backups/
 __pycache__/
 *.pyc
 *.log
