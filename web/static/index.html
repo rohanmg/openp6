@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>openP6 — Schedule</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app">
+  <!-- menu bar -->
+  <div class="menubar">
+    <button class="burger" id="burger" title="Menu">☰</button>
+    <span class="brand">open<b>P6</b></span>
+    <nav class="menu">
+      <span>File</span><span>Edit</span><span>View</span><span>Project</span>
+      <span>Enterprise</span><span>Tools</span><span>Help</span>
+    </nav>
+    <span class="spacer"></span>
+    <span class="who" id="who">local</span>
+  </div>
+
+  <!-- toolbar -->
+  <div class="toolbar">
+    <button class="tb primary" id="btnOpen" title="Import a Primavera P6 .xer file">Open XER</button>
+    <button class="tb" id="btnNew" title="Create an empty schedule">New</button>
+    <button class="tb" id="btnAddAct" title="Add an activity">+ Activity</button>
+    <span class="sep"></span>
+    <button class="tb" id="btnSchedule" title="Schedule (recompute CPM) — F9">Schedule</button>
+    <span class="sep"></span>
+    <button class="tb" id="btnXer" title="Export a Primavera P6 .xer file">Export .xer</button>
+    <button class="tb" id="btnCsv" title="Export activities to CSV">CSV</button>
+    <button class="tb" id="btnPrint" title="Print / PDF">Print</button>
+    <span class="sep"></span>
+    <button class="tb" id="btnCo" title="Show critical path only"><span class="dot"></span>Critical only</button>
+    <span class="sep"></span>
+    <button class="tb icon" id="btnZoomOut" title="Zoom out">−</button>
+    <button class="tb icon" id="btnZoomIn" title="Zoom in">+</button>
+    <button class="tb" id="btnFit" title="Fit to window">Fit</button>
+    <span class="grow"></span>
+    <input type="search" id="search" class="search" placeholder="Search activities…">
+  </div>
+
+  <div class="body">
+    <!-- navigator -->
+    <aside class="nav" id="nav">
+      <div class="navtabs">
+        <button class="nt active" data-tab="projects">EPS / Projects</button>
+        <button class="nt" data-tab="resources">Resources</button>
+        <button class="nt" data-tab="calendars">Calendars</button>
+      </div>
+      <div class="navbody" id="navbody"></div>
+      <div class="navfoot">
+        <button class="tb small" id="btnUpload2">+ Import</button>
+        <button class="tb small danger" id="btnDelete" title="Delete this schedule">Delete</button>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim"></div>
+
+    <!-- workspace -->
+    <div class="work">
+      <div class="crumbs" id="crumbs">No project selected</div>
+      <div class="gridwrap">
+        <div class="grid" id="grid"></div>
+      </div>
+      <div class="details" id="details">
+        <div class="dtabs" id="dtabs"></div>
+        <div class="dbody" id="dbody"><div class="empty">Select an activity to see its details.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar" id="status">Ready</div>
+</div>
+
+<input type="file" id="file" accept=".xer,text/plain" hidden>
+<script src="/static/app.js"></script>
+</body>
+</html>

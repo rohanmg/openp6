@@ -1,0 +1,25 @@
+# Render Blueprint for openP6 — free web service.
+#
+# Deploy: push this repo to GitHub, then Render ▸ New ▸ Blueprint ▸ pick the repo.
+# Set OPENP6_PASSWORD (and ideally DATABASE_URL) in the Render dashboard.
+#
+# Free-tier reality check:
+#   * The service sleeps after 15 min idle → point UptimeRobot at /healthz every 5 min.
+#   * 750 free instance-hours/workspace/month; one always-awake service ≈ 744h, i.e. it fits.
+#   * No persistent disk on free → data is lost on redeploy. Set DATABASE_URL to a
+#     free Postgres (Neon / Supabase) and the whole app becomes stateless + durable.
+services:
+  - type: web
+    name: openp6
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: OPENP6_PASSWORD
+        sync: false          # set a strong value in the dashboard
+      - key: DATABASE_URL
+        sync: false          # e.g. postgresql://user:pass@host/db  (Neon/Supabase free)
+      - key: OPENP6_SECRET
+        generateValue: true  # stable cookie-signing secret

@@ -1,0 +1,7 @@
+data/
+out/
+.venv/
+.password
+__pycache__/
+*.pyc
+*.log

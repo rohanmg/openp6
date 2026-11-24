@@ -1,0 +1,14 @@
+.venv
+venv
+env
+data
+out
+__pycache__
+*.pyc
+*.pyo
+*.png
+*.log
+.git
+.gitignore
+.password
+tests

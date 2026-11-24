@@ -1,0 +1,13 @@
+[project]
+name = "openp6"
+version = "0.1.0"
+description = "Free open-source CPM scheduler for Primavera P6 XER files"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+openp6 = "openp6.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
