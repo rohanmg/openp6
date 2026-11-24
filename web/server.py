@@ -533,6 +533,17 @@ def admin_user_action(request: Request, sub: str, action: str):
     return {"ok": True, "status": u["status"]}
 
 
+@app.post("/api/admin/test-email")
+def admin_test_email(request: Request):
+    """Prove the deployed app can actually send mail (ops check after a deploy)."""
+    require_admin(request)
+    ok, detail = notify.send(
+        auth.admin_email(), "openP6 test email",
+        "If you're reading this, openP6 can email you about access requests.",
+        "<p>If you're reading this, openP6 can email you about access requests.</p>")
+    return {"sent": ok, "detail": detail, "to": auth.admin_email()}
+
+
 # ------------------------------------------------------------------ projects
 @app.get("/api/projects")
 def projects(request: Request):

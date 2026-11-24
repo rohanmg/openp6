@@ -14,8 +14,13 @@ from __future__ import annotations
 import json
 import os
 import smtplib
+import urllib.error
 import urllib.request
 from email.message import EmailMessage
+
+# Cloudflare fronts api.resend.com and blocks requests carrying a default
+# scripting User-Agent with "error code: 1010", so always identify ourselves.
+UA = "openP6/1.0 (+https://openp6.onrender.com)"
 
 
 def _from() -> str:
@@ -34,9 +39,18 @@ def send(to: str, subject: str, text: str, html: str = "") -> tuple[bool, str]:
                                "text": text, "html": html or None}).encode()
             req = urllib.request.Request(
                 "https://api.resend.com/emails", data=body, method="POST",
-                headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
+                headers={"Authorization": "Bearer " + key,
+                         "Content-Type": "application/json",
+                         "Accept": "application/json",
+                         "User-Agent": UA})
             with urllib.request.urlopen(req, timeout=30) as r:
                 return 200 <= r.status < 300, f"resend {r.status}"
+        except urllib.error.HTTPError as e:
+            try:
+                why = e.read().decode("utf-8", "replace")[:300]
+            except Exception:
+                why = ""
+            return False, f"resend {e.code}: {why}"
         except Exception as e:
             return False, f"resend failed: {e}"
 
