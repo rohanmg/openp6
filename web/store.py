@@ -5,8 +5,10 @@ survive redeploys on hosts whose filesystem is ephemeral, e.g. Render free).
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import threading
 from pathlib import Path
 
 
@@ -64,19 +66,72 @@ class LocalStore:
 
 
 class PGStore:
+    """Postgres store with a small connection pool.
+
+    A connection per call is fine on a host's internal network, but against a
+    managed database over the internet every call would pay a TLS handshake -
+    and one page load issues dozens of store calls.
+    """
     backend = "postgres"
+    POOL_MAX = int(os.environ.get("OPENP6_PG_POOL") or 4)
 
     def __init__(self, dsn):
         import psycopg  # noqa
         self.psycopg = psycopg
         self.dsn = dsn
+        self._pool = []
+        self._lock = threading.Lock()
         with self._conn() as c:
             c.execute("create table if not exists openp6_docs ("
                       "key text primary key, doc jsonb not null, "
                       "updated timestamptz default now())")
 
+    def _new(self):
+        # prepare_threshold=None: a pooled/pgBouncer endpoint like Neon's can route
+        # the next statement to a different backend, so a server-side prepared
+        # statement can vanish mid-connection and error on reuse.
+        return self.psycopg.connect(self.dsn, autocommit=True,
+                                    prepare_threshold=None, connect_timeout=30)
+
+    def _acquire(self):
+        with self._lock:
+            c = self._pool.pop() if self._pool else None
+        if c is not None:
+            try:
+                if not c.closed:
+                    c.execute("select 1")      # a scale-to-zero DB drops idle handles
+                    return c
+            except Exception:
+                pass
+            try:
+                c.close()
+            except Exception:
+                pass
+        return self._new()
+
+    def _release(self, c):
+        with self._lock:
+            if len(self._pool) < self.POOL_MAX:
+                self._pool.append(c)
+                return
+        try:
+            c.close()
+        except Exception:
+            pass
+
+    @contextlib.contextmanager
     def _conn(self):
-        return self.psycopg.connect(self.dsn, autocommit=True)
+        c = self._acquire()
+        try:
+            yield c
+        except Exception:
+            try:
+                c.close()
+            except Exception:
+                pass
+            raise
+        else:
+            self._release(c)
 
     def list_keys(self, prefix=""):
         like = (prefix + "/%") if prefix else "%"
