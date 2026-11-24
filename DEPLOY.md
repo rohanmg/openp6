@@ -16,9 +16,16 @@ Postgres storage, so it runs on any container host. Pick one path:
 
 | Var | Meaning |
 |---|---|
-| `OPENP6_PASSWORD` | Login password (set a strong one) |
-| `OPENP6_SECRET` | Stable cookie-signing secret (Render can generate it) |
-| `DATABASE_URL` | Optional Postgres DSN — makes the app stateless + durable |
+| `OPENP6_PASSWORD` | Admin **fallback** password (set a strong one) |
+| `OPENP6_SECRET` | Stable signing secret for sessions + approval links |
+| `DATABASE_URL` | Postgres DSN (Neon in production) — makes the app durable |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth client, type **Web application** |
+| `ADMIN_EMAIL` | Your address: auto-approved, receives access requests |
+| `RESEND_API_KEY` *or* `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` | Sends the approval email |
+| `OPENP6_MAX_PROJECTS` / `OPENP6_MAX_BYTES` | Per-user quota (10 schedules / 300 MB) |
+| `OPENP6_HISTORY_BYTES` | Undo-history budget per project (32 MB) |
+| `OPENP6_PG_POOL` | Postgres pool size (4) |
+| `OPENP6_DATA` | Local JSON directory when no `DATABASE_URL` is set |
 | `PORT` / `OPENP6_PORT` | Listen port (Render injects `PORT`) |
 
 ---
@@ -43,6 +50,25 @@ Create a free Postgres at [neon.tech](https://neon.tech) (no card) and set
 Postgres, so schedules survive redeploys. Without it, treat the app as ephemeral.
 
 > Render's free Postgres expires after 30 days — use Neon or Supabase instead.
+> openP6's production instance runs on **Neon** (`ap-southeast-2`), and reuses a
+> small pool of connections (`OPENP6_PG_POOL`) rather than reconnecting per call.
+
+**Google sign-in:** create an OAuth client of type **Web application** and add the
+redirect URI *exactly*:
+
+```
+https://your-app.onrender.com/auth/google/callback
+```
+
+plus `http://localhost:8080/auth/google/callback` for local testing. A mismatch
+fails before Google shows any consent screen (`redirect_uri_mismatch`), so a
+consent page appearing is itself proof that the URI is registered.
+
+> **Changing an env var does not reliably restart the running instance on
+> Render.** After editing env vars, trigger a deploy and confirm *that* deploy
+> reached `live` — otherwise the old container keeps serving and you will end up
+> "verifying" the previous database. Tell-tale sign: the API reports the new
+> value while the app still behaves with the old one.
 
 ---
 

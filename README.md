@@ -38,11 +38,25 @@ Oracle Cloud) and the tunnel option.
 
 * Local:  http://localhost:8080
 * LAN:    http://<this-machine-ip>:8080   (phone on the same Wi-Fi)
-* Login password lives in `./.password` (or `$OPENP6_PASSWORD`).
-* `OPENP6_LOCAL_TRUST=1` skips the password for localhost only (never enable
-  this when a tunnel or proxy sits in front — the proxy looks like localhost).
-* `DATABASE_URL` switches storage from local JSON files to Postgres, so the app
-  survives redeploys on hosts with an ephemeral filesystem.
+* **Sign-in:** Google (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`) behind an
+  **admin approval queue** — a new account lands as *pending* and cannot reach
+  any schedule until the admin (`ADMIN_EMAIL`) approves it, from the app's Users
+  panel or the one-click link in the notification email.
+* Each user's schedules live in their own namespace and ownership is enforced
+  **server-side on every route**, so knowing a project key is not access.
+* The shared password (`./.password` or `$OPENP6_PASSWORD`) still works as an
+  **admin fallback**, so a Google misconfiguration can never lock you out.
+* `RESEND_API_KEY` (or `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS`) lets the app email
+  you access requests. With no sender configured, requests still queue in the
+  Users panel — nothing is lost.
+* `OPENP6_LOCAL_TRUST=1` skips auth for localhost only (never enable this when a
+  tunnel or proxy sits in front — the proxy looks like localhost).
+* `DATABASE_URL` switches storage from local JSON files to Postgres (Neon in
+  production) so the app survives redeploys on an ephemeral filesystem.
+  `OPENP6_DATA` relocates the local JSON directory instead.
+* Quotas: `OPENP6_MAX_PROJECTS` (10) and `OPENP6_MAX_BYTES` (300 MB) per user.
+  `OPENP6_HISTORY_BYTES` (32 MB) caps undo history **per project** — snapshots of
+  a 24 MB schedule would otherwise fill the database by themselves.
 
 ## What it does
 
@@ -78,7 +92,8 @@ python verify.py sample.xer sample_multi.xer
 - Multi-project *inter-project* relationships are not yet chained.
 - Constraints (MSO/MEO etc.), resource levelling and assignable calendars per
   activity are not modelled yet — dates on constrained tasks can differ.
-- No XER **write-back of edits** yet (reader round-trips; editing is next).
+- Editing writes back to `.xer` via **Export .xer**; the export is a working file
+  but does not yet emit every P6-specific table/column.
 - Interoperability cross-check against MPXJ is planned.
 
 ## Licence
