@@ -83,6 +83,44 @@ def main() -> int:
                 print(f"reusing service: {s.get('id')}")
                 break
 
+    # ---- database first, so the service is created with DATABASE_URL already set ----
+    db_url = ""
+    if args.database:
+        db = None
+        code, dbs = call("GET", "/postgres?limit=20", key=key)
+        if code == 200 and isinstance(dbs, list):
+            for it in dbs:
+                p = it.get("postgres", it) if isinstance(it, dict) else {}
+                if isinstance(p, dict) and p.get("name") == f"{args.name}-db":
+                    db = p
+                    print(f"reusing postgres: {db.get('id')}")
+                    break
+        if db is None:
+            code, resp = call("POST", "/postgres", {
+                "name": f"{args.name}-db", "ownerId": owner_id, "plan": "free",
+                "region": args.region, "version": "16"}, key=key)
+            if code in (200, 201):
+                db = resp.get("postgres", resp) if isinstance(resp, dict) else {}
+                print(f"postgres      : {db.get('id')} (free plan expires after 30 days)")
+            else:
+                print(f"postgres create failed: {code} {resp}", file=sys.stderr)
+                db = None
+        if db and db.get("id"):
+            for _ in range(30):                 # a new Postgres is not ready instantly
+                code, conn = call("GET", f"/postgres/{db['id']}/connection-info", key=key)
+                if code == 200 and isinstance(conn, dict) and conn.get("internalConnectionString"):
+                    db_url = conn["internalConnectionString"]
+                    break
+                time.sleep(10)
+            print(f"db url       : {'resolved' if db_url else 'NOT READY (rerun to attach)'}")
+
+    env_vars = [
+        {"key": "OPENP6_PASSWORD", "value": args.password},
+        {"key": "OPENP6_SECRET", "value": args.secret},
+    ]
+    if db_url:
+        env_vars.append({"key": "DATABASE_URL", "value": db_url})
+
     if svc is None:
         body = {
             "type": "web_service",
@@ -91,10 +129,7 @@ def main() -> int:
             "repo": args.repo,
             "branch": args.branch,
             "autoDeploy": "yes",
-            "envVars": [
-                {"key": "OPENP6_PASSWORD", "value": args.password},
-                {"key": "OPENP6_SECRET", "value": args.secret},
-            ],
+            "envVars": env_vars,
             "serviceDetails": {
                 "env": "docker",
                 "plan": "free",
@@ -103,29 +138,24 @@ def main() -> int:
                 "envSpecificDetails": {"dockerfilePath": "./Dockerfile"},
             },
         }
-        code, svc = call("POST", "/services", body, key=key)
+        code, resp = call("POST", "/services", body, key=key)
         if code not in (200, 201):
-            print(f"service create failed: {code} {svc}", file=sys.stderr)
+            print(f"service create failed: {code} {resp}", file=sys.stderr)
             return 1
-        print(f"created      : {svc['id']}")
+        svc = resp.get("service", resp) if isinstance(resp, dict) else {}
+        print(f"created       : {svc.get('id')}")
+    elif db_url:
+        # per-key endpoint: the bulk PUT rejects this payload shape
+        code, resp = call("PUT", f"/services/{svc['id']}/env-vars/DATABASE_URL",
+                          {"value": db_url}, key=key)
+        print(f"env vars     : DATABASE_URL attach -> HTTP {code}")
+
+    if not isinstance(svc, dict) or not svc.get("id"):
+        print(f"could not determine service id: {svc}", file=sys.stderr)
+        return 1
 
     url = (svc.get("serviceDetails") or {}).get("url") or svc.get("url") or ""
-    print(f"url          : {url}")
-
-    if args.database:
-        code, db = call("POST", "/postgres", {
-            "name": f"{args.name}-db", "ownerId": owner_id, "plan": "free",
-            "region": args.region, "version": "16",
-        }, key=key)
-        if code in (200, 201):
-            print(f"postgres     : {db.get('id')} (free tier expires after 30 days)")
-            code, conn = call("GET", f"/postgres/{db['id']}/connection-info", key=key)
-            if code == 200:
-                call("PUT", f"/services/{svc['id']}/env-vars/DATABASE_URL",
-                     {"value": conn.get("internalConnectionString")}, key=key)
-                print("linked DATABASE_URL -> internal connection string")
-        else:
-            print(f"postgres create failed: {code} {db}", file=sys.stderr)
+    print(f"url           : {url}")
 
     if url:
         subprocess.run(["gh", "variable", "set", "OPENP6_URL", "--body", url],
